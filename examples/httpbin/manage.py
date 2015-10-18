@@ -27,7 +27,6 @@ from functools import partial
 from itertools import repeat, chain
 from random import random
 from base64 import b64encode
-from asyncio import async
 
 from pulsar import HttpRedirect, HttpException, version, JAPANESE, CHINESE
 from pulsar.utils.httpurl import (Headers, ENCODE_URL_METHODS,
@@ -297,6 +296,10 @@ class HttpBin(BaseRouter):
         name = request.get('SERVER_NAME')
         return String(name, '\n').http_response(request)
 
+    @route()
+    async def asynchronous(self, request):
+        return self.info_data_response(request)
+
     ########################################################################
     #    BENCHMARK ROUTES
     @route()
@@ -311,10 +314,7 @@ class HttpBin(BaseRouter):
 class Upload(BaseRouter):
     response_content_types = ['multipart/form-data']
 
-    def put(self, request):
-        return async(self._async_put(request))
-
-    def _async_put(self, request):
+    async def put(self, request):
         headers = self.getheaders(request)
         data = {'method': request.method,
                 'headers': headers,
@@ -322,7 +322,7 @@ class Upload(BaseRouter):
                 'args': MultiValueDict(),
                 'files': MultiValueDict()}
         request.cache.response_data = data
-        yield from request.data_and_files(stream=partial(self.stream, request))
+        await request.data_and_files(stream=partial(self.stream, request))
         data['args'] = dict(data['args'])
         data['files'] = dict(data['files'])
         return Json(data).http_response(request)

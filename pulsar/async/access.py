@@ -5,6 +5,7 @@ import logging
 from collections import OrderedDict
 from threading import current_thread
 import asyncio
+from inspect import iscoroutine as inspect_iscoroutine
 
 from asyncio import iscoroutine, coroutine
 
@@ -27,6 +28,7 @@ __all__ = ['get_event_loop',
            'reraise',
            'coroutine',
            'is_async',
+           'is_async_strict',
            'CANCELLED_ERRORS']
 
 
@@ -45,12 +47,16 @@ def reraise(tp, value, tb=None):
 Future = asyncio.Future
 
 
-def isfuture(x):
-    return isinstance(x, Future)
+def isfuture(c):
+    return isinstance(c, Future)
 
 
 def is_async(c):
-    return isfuture(c) or iscoroutine(c)
+    return isinstance(c, Future) or iscoroutine(c)
+
+
+def is_async_strict(c):
+    return isinstance(c, Future) or inspect_iscoroutine(c)
 
 
 LOGGER = logging.getLogger('pulsar')

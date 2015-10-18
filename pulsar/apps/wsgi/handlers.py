@@ -98,7 +98,7 @@ via the ``_loop`` attribute::
 .. _WSGI: http://www.wsgi.org
 .. _`WSGI 1.0.1`: http://www.python.org/dev/peps/pep-3333/
 '''
-from pulsar import Http404, async, isfuture
+from pulsar import Http404, is_async_strict
 from pulsar.utils.log import LocalMixin, local_method
 
 from .utils import handle_wsgi_error
@@ -141,7 +141,7 @@ class WsgiHandler(object):
     def __call__(self, environ, start_response):
         '''The WSGI callable'''
         if self.async:
-            return async(self._async(environ, start_response))
+            return self._async(environ, start_response)
         response = None
         try:
             for middleware in self.middleware:
@@ -160,13 +160,13 @@ class WsgiHandler(object):
             response.start(start_response)
         return response
 
-    def _async(self, environ, start_response):
+    async def _async(self, environ, start_response):
         response = None
         try:
             for middleware in self.middleware:
                 response = middleware(environ, start_response)
-                if isfuture(response):
-                    response = yield from response
+                if is_async_strict(response):
+                    response = await response
                 if response is not None:
                     break
             if response is None:
@@ -178,8 +178,8 @@ class WsgiHandler(object):
         if isinstance(response, WsgiResponse) and not response.started:
             for middleware in self.response_middleware:
                 response = middleware(environ, response)
-                if isfuture(response):
-                    response = yield from response
+                if is_async_strict(response):
+                    response = await response
             response.start(start_response)
         return response
 

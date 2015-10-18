@@ -1,8 +1,8 @@
 from collections import Mapping
-from inspect import isgeneratorfunction
+from inspect import isgeneratorfunction, iscoroutinefunction
 from functools import wraps, partial
+from asyncio import Future, CancelledError, TimeoutError, ensure_future, sleep
 
-from asyncio import Future, CancelledError, TimeoutError, async, sleep
 from .consts import MAX_ASYNC_WHILE
 from .access import get_event_loop, LOGGER, isfuture, is_async
 
@@ -11,11 +11,9 @@ __all__ = ['maybe_async',
            'run_in_loop',
            'add_errback',
            'add_callback',
-           'task_callback',
            'multi_async',
            'as_coroutine',
            'task',
-           'async',
            'async_while',
            'chain_future',
            'future_result_exc',
@@ -38,7 +36,7 @@ def chain_future(future, callback=None, errback=None, next=None):
     :return: the future ``next``
     '''
     loop = next._loop if next else None
-    future = async(future, loop=loop)
+    future = ensure_future(future, loop=loop)
     if next is None:
         next = Future(loop=future._loop)
 
@@ -83,7 +81,7 @@ def add_errback(future, callback, loop=None):
         elif fut.cancelled():
             callback(CancelledError())
 
-    future = async(future, loop=None)
+    future = ensure_future(future, loop=None)
     future.add_done_callback(_error_back)
     return future
 
@@ -95,7 +93,7 @@ def add_callback(future, callback, loop=None):
         if not (fut._exception or fut.cancelled()):
             callback(fut.result())
 
-    future = async(future, loop=None)
+    future = ensure_future(future, loop=None)
     future.add_done_callback(_call_back)
     return future
 
@@ -113,15 +111,6 @@ def future_result_exc(future):
         return future.result(), None
 
 
-def task_callback(callback):
-
-    @wraps(callback)
-    def _task_callback(fut):
-        return async(callback(fut.result()), fut._loop)
-
-    return _task_callback
-
-
 def maybe_async(value, loop=None):
     '''Handle a possible asynchronous ``value``.
 
@@ -134,7 +123,7 @@ def maybe_async(value, loop=None):
     :return: a :class:`.Future` or a synchronous ``value``.
     '''
     try:
-        return async(value, loop=loop)
+        return ensure_future(value, loop=loop)
     except TypeError:
         return value
 
@@ -154,20 +143,19 @@ def task(function):
         is given by the object ``_loop`` attribute.
     :return: a :class:`~asyncio.Future`
     '''
-    if isgeneratorfunction(function):
+    if isgeneratorfunction(function) or iscoroutinefunction(function):
         wrapper = function
     else:
         def wrapper(*args, **kw):
             res = function(*args, **kw)
-            if res:
+            if isfuture(res):
                 res = yield from res
             return res
 
     @wraps(function)
     def _(*args, **kwargs):
         loop = getattr(args[0], '_loop', None) if args else None
-        coro = wrapper(*args, **kwargs)
-        return async(coro, loop=loop)
+        return ensure_future(wrapper(*args, **kwargs), loop=loop)
 
     return _
 
