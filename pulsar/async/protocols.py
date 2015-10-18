@@ -279,17 +279,19 @@ class PulsarProtocol(EventHandler, FlowControl):
     @property
     def closed(self):
         '''``True`` if the :attr:`transport` is closed.'''
-        return self._transport._closing if self._transport else True
+        return self._transport is None
 
     def close(self):
         '''Close by closing the :attr:`transport`.'''
         if self._transport:
-            if self._transport.can_write_eof():
+            transport = self._transport
+            self._transport = None
+            if transport.can_write_eof():
                 try:
-                    self._transport.write_eof()
+                    transport.write_eof()
                 except AttributeError:
                     pass
-            self._transport.close()
+            transport.close()
 
     def abort(self):
         '''Abort by aborting the :attr:`transport`.'''
@@ -337,8 +339,6 @@ class Protocol(PulsarProtocol, asyncio.Protocol):
         '''
         t = self._transport
         if t:
-            if t._closing:  # Uses private variable.
-                raise ConnectionResetError('Connection lost')
             if self._paused:
                 # # Uses private variable once again!
                 # This occurs when the protocol is paused from writing
