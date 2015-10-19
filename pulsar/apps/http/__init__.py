@@ -1189,12 +1189,19 @@ class HttpClient(AbstractClient):
             d.override(headers)
         return d
 
-    def ssl_context(self, verify=True, **kwargs):
+    def ssl_context(self, verify=True, cert_reqs=None,
+                    check_hostname=False, certfile=None, keyfile=None,
+                    cafile=None, capath=None, cadata=None, **kw):
         assert ssl, 'SSL not supported'
         if verify:
-            return ssl.create_default_context(**kwargs)
-        else:
-            return ssl._create_unverified_context(**kwargs)
+            cert_reqs = ssl.CERT_REQUIRED
+            check_hostname = True
+        return ssl._create_unverified_context(cert_reqs=cert_reqs,
+                                              check_hostname=check_hostname,
+                                              certfile=certfile,
+                                              keyfile=keyfile,
+                                              cafile=cafile, capath=capath,
+                                              cadata=cadata)
 
     def set_proxy(self, request):
         if request.scheme in self.proxy_info:

@@ -141,10 +141,10 @@ import threading
 import logging
 from collections import deque
 from functools import wraps
+from asyncio import ensure_future
 
 from greenlet import greenlet, getcurrent
 
-from pulsar import async
 from pulsar import Future, get_event_loop, AsyncObject, is_async
 
 
@@ -269,7 +269,8 @@ class GreenPool(AsyncObject):
             task = self._queue.pop()
         except IndexError:
             return
-        async(self._green_task(self._available.pop(), task), loop=self._loop)
+        ensure_future(self._green_task(self._available.pop(), task),
+                      loop=self._loop)
 
     def _green_task(self, green, task):
         # Coroutine executing the in main greenlet

@@ -42,7 +42,7 @@ from functools import partial
 import asyncio
 
 import pulsar
-from pulsar import HttpException, task, async, add_errback, as_coroutine
+from pulsar import HttpException, add_errback
 from pulsar.apps import wsgi, http
 from pulsar.utils.httpurl import Headers
 from pulsar.utils.log import LocalMixin, local_property
@@ -80,20 +80,19 @@ class ProxyServerWsgiHandler(LocalMixin):
         self.headers_middleware = headers_middleware or []
 
     @local_property
-    def http_client(self):
+    def http(self):
         '''The :class:`.HttpClient` used by this proxy middleware for
         accessing upstream resources'''
         return http.HttpClient(decompress=False, store_cookies=False)
 
-    @task
-    def __call__(self, environ, start_response):
+    async def __call__(self, environ, start_response):
         uri = environ['RAW_URI']
         logger.debug('new request for %r' % uri)
         if not uri or uri.startswith('/'):  # No proper uri, raise 404
             raise HttpException(status=404)
         if environ.get('HTTP_EXPECT') != '100-continue':
             stream = environ.get('wsgi.input') or io.BytesIO()
-            data = yield from as_coroutine(stream.read())
+            data = await stream.read()
         else:
             data = None
         request_headers = self.request_headers(environ)
@@ -103,11 +102,11 @@ class ProxyServerWsgiHandler(LocalMixin):
             response = ProxyTunnel(environ, start_response)
         else:
             response = ProxyResponse(environ, start_response)
-        request = self.http_client.request(method, uri, data=data,
-                                           headers=request_headers,
-                                           version=environ['SERVER_PROTOCOL'],
-                                           pre_request=response.pre_request)
-        add_errback(async(request), response.error)
+        request = self.http.request(method, uri, data=data,
+                                    headers=request_headers,
+                                    version=environ['SERVER_PROTOCOL'],
+                                    pre_request=response.pre_request)
+        add_errback(request, response.error, loop=self.http._loop)
         return response
 
     def request_headers(self, environ):
@@ -152,7 +151,7 @@ class ProxyResponse(object):
                 except asyncio.QueueEmpty:
                     break
             else:
-                yield async(self.queue.get())
+                yield self.queue.get()
 
     def pre_request(self, response, exc=None):
         self._started = True
@@ -179,14 +178,11 @@ class ProxyResponse(object):
             self._done = True
             self.queue.put_nowait(resp.content[0])
 
-    @task
     def data_processed(self, response, exc=None, **kw):
         '''Receive data from the requesting HTTP client.'''
         status = response.get_status()
         if status == '100 Continue':
-            stream = self.environ.get('wsgi.input') or io.BytesIO()
-            body = yield from stream.read()
-            response.transport.write(body)
+            asyncio.ensure_future(self._read(response))
         if response.parser.is_headers_complete():
             if self._headers is None:
                 headers = self.remove_hop_headers(response.headers)
@@ -202,6 +198,11 @@ class ProxyResponse(object):
         for header, value in headers:
             if header.lower() not in wsgi.HOP_HEADERS:
                 yield header, value
+
+    async def _read(self, response):
+        stream = self.environ['wsgi.input']
+        body = await stream.read()
+        response.transport.write(body)
 
 
 class ProxyTunnel(ProxyResponse):
