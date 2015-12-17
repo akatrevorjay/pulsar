@@ -440,6 +440,7 @@ class HttpRequest(RequestBase):
                  source_address=None, allow_redirects=False, max_redirects=10,
                  decompress=True, version=None, wait_continue=False,
                  websocket_handler=None, cookies=None, urlparams=None,
+                 proxy_tuple=None,
                  **ignored):
         self.client = client
         self._data = None
@@ -477,7 +478,11 @@ class HttpRequest(RequestBase):
             cookies.add_cookie_header(self)
         self.unredirected_headers['host'] = host_no_default_port(self._scheme,
                                                                  self._netloc)
-        client.set_proxy(self)
+        if proxy_tuple:
+            self.set_proxy(*proxy_tuple)
+        else:
+            client.set_proxy(self)
+
         self.data = data
 
     @property
