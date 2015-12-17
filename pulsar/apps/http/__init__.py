@@ -548,11 +548,14 @@ class HttpRequest(RequestBase):
         self._data = self._encode_data(data)
 
     def first_line(self):
-        if not self._proxy and self.method != self.CONNECT:
+        if self._proxy:
+            if self.method == self.CONNECT:
+                url = self._netloc
+            else:
+                url = self.full_url
+        else:
             url = urlunparse(('', '', self.path or '/', self.params,
                               self.query, self.fragment))
-        else:
-            url = self.full_url
         return '%s %s %s' % (self.method, url, self.version)
 
     def new_parser(self):
